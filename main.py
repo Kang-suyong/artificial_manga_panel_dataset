@@ -1,35 +1,55 @@
-from scraping.download_texts import download_and_extract_jesc
-from scraping.download_fonts import get_font_links
-from scraping.download_images import download_db_illustrations
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-from preprocesing.text_dataset_format_changer import convert_jesc_to_dataframe
-from preprocesing.extract_and_verify_fonts import (
-                                                   extract_fonts,
-                                                   get_font_files,
-                                                   verify_font_files
-                                                   )
+from scraping.download_images import download_db_illustrations
 from preprocesing.convert_images import convert_images_to_bw
 from preprocesing.layout_engine.page_creator import render_pages
-from preprocesing.layout_engine.page_dataset_creator import (
-                                                        create_page_metadata
-                                                        )
+from preprocesing.layout_engine.page_dataset_creator import create_page_metadata
 from tqdm import tqdm
 import os
 import pandas as pd
 from argparse import ArgumentParser
 import pytest
 
-import time
+import preprocesing.config_file as cfg
+
+# ===== 말풍선·텍스트 비활성화 =====
+# preprocesing/config_file.py 에 정의된 값을 직접 덮어씁니다.
+cfg.SPEECH_BUBBLE_SETTINGS["min_per_panel"] = 0
+cfg.SPEECH_BUBBLE_SETTINGS["max_per_panel"] = 0
+cfg.max_speech_bubbles_per_panel = 0
+cfg.TEXT_SETTINGS["enabled"] = False
+# ==================================
+
+
+
+def find_image_dir():
+    """
+    Identify the correct BW image directory among possible candidates.
+    Raises RuntimeError if none found or all are empty.
+    """
+    candidates = [
+        "datasets/image_dataset/db_illustrations_bw",
+        "datasets/image_dataset/tagged-anime-illustrations/danbooru-images",
+        "datasets/image_dataset/tagged-anime-illustrations/danbooru-images/danbooru-images"
+    ]
+    for d in candidates:
+        if os.path.isdir(d) and os.listdir(d):
+            return d + os.sep
+    raise RuntimeError(
+        "No BW image folder found. Please ensure images are downloaded and converted.\n"
+        "Expected one of:\n  " + "\n  ".join(candidates)
+    )
+
 
 if __name__ == '__main__':
 
     usage_message = """
-                    This file is designed you to create the AMP dataset
-                    To learn more about how to use this open the README.md
-                    """
+    AMP Dataset Creator (Image-Only Mode)
+    Generate manga-style panels using only preprocessed images.
+    """
 
     parser = ArgumentParser(usage=usage_message)
-
     parser.add_argument("--download_jesc", "-dj",
                         action="store_true",
                         help="Download JESC Japanese/English dialogue corpus")
@@ -38,63 +58,37 @@ if __name__ == '__main__':
                         help="Scrape font files")
     parser.add_argument("--download_images", "-di",
                         action="store_true",
-                        help="Download anime illustrtations from Kaggle")
+                        help="Download anime illustrations from Kaggle and convert to BW")
     parser.add_argument("--download_speech_bubbles", "-ds",
                         action="store_true",
                         help="Download speech bubbles from Gcloud")
-
     parser.add_argument("--verify_fonts", "-vf",
                         action="store_true",
-                        help="Verify fonts for minimum coverage from")
+                        help="Verify fonts for minimum coverage")
 
     parser.add_argument("--convert_images", "-ci",
                         action="store_true",
-                        help="Convert downloaded images to black and white")
+                        help="Convert existing images to black and white")
 
-    parser.add_argument("--create_page_metadata", "-pm", nargs=1, type=int)
-    parser.add_argument("--render_pages", "-rp", action="store_true")
-    parser.add_argument("--generate_pages", "-gp", nargs=1, type=int)
-    parser.add_argument("--dry", action="store_true", default=False)
-    parser.add_argument("--run_tests", action="store_true")
+    parser.add_argument("--create_page_metadata", "-pm", nargs=1, type=int,
+                        help="Generate metadata for N pages (image-only mode)")
+    parser.add_argument("--render_pages", "-rp", action="store_true",
+                        help="Render pages from existing metadata")
+    parser.add_argument("--generate_pages", "-gp", nargs=1, type=int,
+                        help="One-shot: create metadata and render N pages")
+    parser.add_argument("--images_only", action="store_true",
+                        help="Strip out all text and speech bubbles; only frames and images")
+    parser.add_argument("--dry", action="store_true", default=False,
+                        help="Dry-run mode: do not write output files")
+    parser.add_argument("--run_tests", action="store_true",
+                        help="Run unit tests before anything else")
 
     args = parser.parse_args()
 
-    # Wrangling with the text dataset
-    if args.download_jesc:
-        download_and_extract_jesc()
-        convert_jesc_to_dataframe()
+    if args.run_tests:
+        pytest.main(["tests/unit_tests/", "-q", "-x"])
+        exit(0)
 
-    # Font dataset
-    # TODO: Add an automatic scraper
-    if args.download_fonts:
-        get_font_links()
-        print("Please run scraping/font_download_manual.ipynb" +
-              " and download fonts manually from the links" +
-              "that were scraped then place them in" +
-              "datasets/font_dataset/font_file_raw_downloads/")
-
-        print("NOTE: There's no need to extract them this program does that")
-
-    # Font verification
-    if args.verify_fonts:
-
-        font_dataset_path = "datasets/font_dataset/"
-        text_dataset_path = "datasets/text_dataset/"
-        fonts_raw_dir = font_dataset_path+"font_file_raw_downloads/"
-        fonts_zip_output = font_dataset_path+"fonts_zip_output/"
-        font_file_dir = font_dataset_path+"font_files/"
-        dataframe_file = text_dataset_path+"jesc_dialogues"
-        render_text_test_file = font_dataset_path + "render_test_text.txt"
-
-        # extract_fonts()
-        verify_font_files(
-            dataframe_file,
-            render_text_test_file,
-            font_file_dir,
-            font_dataset_path
-        )
-
-    # Download and convert image from Kaggle
     if args.download_images:
         download_db_illustrations()
         convert_images_to_bw()
@@ -102,123 +96,68 @@ if __name__ == '__main__':
     if args.convert_images:
         convert_images_to_bw()
 
-    # Page creation
-    if args.create_page_metadata is not None:
-        metadata_folder = "datasets/page_metadata/"
-        if not os.path.isdir(metadata_folder) and not args.dry:
-            os.mkdir(metadata_folder)
+    def prepare_image_only_inputs():
+        """Return empty placeholders for text/bubbles when images_only."""
+        if args.images_only:
+            return pd.DataFrame(), [], pd.DataFrame(), []
+        else:
+            return pd.DataFrame(), [], pd.DataFrame(), []  # same structure if you plan to load real data
 
-        # number of pages
+    # 3) Metadata generation (image-only)
+    if args.create_page_metadata:
         n = args.create_page_metadata[0]
-        print("Loading files")
-        image_dir_path = "datasets/image_dataset/db_illustrations_bw/"
-        image_dir = os.listdir(image_dir_path)
+        metadata_folder = "datasets/page_metadata/"
+        os.makedirs(metadata_folder, exist_ok=True)
 
-        text_dataset = pd.read_parquet("datasets/text_dataset/jesc_dialogues")
+        image_dir_path = find_image_dir()
+        image_list = sorted(os.listdir(image_dir_path))
 
-        speech_bubbles_path = "datasets/speech_bubbles_dataset/"
+        text_dataset, speech_bubble_files, speech_bubble_tags, viable_font_files = prepare_image_only_inputs()
 
-        speech_bubble_files = os.listdir(speech_bubbles_path+"/files/")
-        speech_bubble_files = [speech_bubbles_path+"files/"+filename
-                               for filename in speech_bubble_files
-                               ]
-
-        speech_bubble_tags = pd.read_csv(speech_bubbles_path +
-                                         "writing_area_labels.csv")
-        speech_bubble_tags['imagename'] = speech_bubble_tags['imagename'].str.replace('~', '-') # fix kaggle path error
-        font_files_path = "datasets/font_dataset/"
-        viable_font_files = []
-        with open(font_files_path+"viable_fonts.csv") as viable_fonts:
-
-            for line in viable_fonts.readlines():
-                path, viable = line.split(",")
-                viable = viable.replace("\n", "")
-                if viable == "True":
-                    viable_font_files.append(path)
-
-        print("Running creation of metadata")
-        for i in tqdm(range(n)):
-            page = create_page_metadata(image_dir,
-                                        image_dir_path,
-                                        viable_font_files,
-                                        text_dataset,
-                                        speech_bubble_files,
-                                        speech_bubble_tags
-                                        )
+        print(f"Creating metadata for {n} image-only pages...")
+        for _ in tqdm(range(n)):
+            page = create_page_metadata(
+                image_list,
+                image_dir_path,
+                viable_font_files,
+                text_dataset,
+                speech_bubble_files,
+                speech_bubble_tags
+            )
             page.dump_data(metadata_folder, dry=args.dry)
 
+    # 4) Render existing metadata to images
     if args.render_pages:
-
         metadata_folder = "datasets/page_metadata/"
         images_folder = "datasets/page_images/"
-        if not os.path.isdir(metadata_folder):
-            print("There is no metadata please generate metadata first")
-        else:
-            if not os.path.isdir(images_folder) and not args.dry:
-                os.mkdir(images_folder)
+        os.makedirs(images_folder, exist_ok=True)
 
-            print("Loading metadata and rendering")
-            render_pages(metadata_folder, images_folder, dry=args.dry)
+        print("Rendering pages from metadata...")
+        render_pages(metadata_folder, images_folder, dry=args.dry)
 
-    # Combines the above in case of small size
-    if args.generate_pages is not None:
-        # number of pages
+    # 5) One-shot: create metadata + render
+    if args.generate_pages:
         n = args.generate_pages[0]
-
         metadata_folder = "datasets/page_metadata/"
-        if not os.path.isdir(metadata_folder) and not args.dry:
-            os.mkdir(metadata_folder)
+        os.makedirs(metadata_folder, exist_ok=True)
 
-        print("Loading files")
-        image_dir_path = "datasets/image_dataset/db_illustrations_bw/"
-        image_dir = os.listdir(image_dir_path)
+        image_dir_path = find_image_dir()
+        image_list = sorted(os.listdir(image_dir_path))
 
-        text_dataset = pd.read_parquet("datasets/text_dataset/jesc_dialogues")
+        text_dataset, speech_bubble_files, speech_bubble_tags, viable_font_files = prepare_image_only_inputs()
 
-        speech_bubbles_path = "datasets/speech_bubbles_dataset/"
+        print(f"Generating and rendering {n} image-only pages...")
+        for _ in tqdm(range(n)):
+            page = create_page_metadata(
+                image_list,
+                image_dir_path,
+                viable_font_files,
+                text_dataset,
+                speech_bubble_files,
+                speech_bubble_tags
+            )
+            page.dump_data(metadata_folder, dry=args.dry)
 
-        speech_bubble_files = os.listdir(speech_bubbles_path+"/files/")
-        speech_bubble_files = [speech_bubbles_path+"files/"+filename
-                               for filename in speech_bubble_files
-                               ]
-
-        speech_bubble_tags = pd.read_csv(speech_bubbles_path +
-                                         "writing_area_labels.csv")
-        speech_bubble_tags['imagename'] = speech_bubble_tags['imagename'].str.replace('~', '-') # fix kaggle path error
-        font_files_path = "datasets/font_dataset/"
-        viable_font_files = []
-        with open(font_files_path+"viable_fonts.csv") as viable_fonts:
-
-            for line in viable_fonts.readlines():
-                path, viable = line.split(",")
-                viable = viable.replace("\n", "")
-                if viable == "True":
-                    viable_font_files.append(path)
-
-        print("Running creation of metadata")
-        for i in tqdm(range(n)):
-            page = create_page_metadata(image_dir,
-                                        image_dir_path,
-                                        viable_font_files,
-                                        text_dataset,
-                                        speech_bubble_files,
-                                        speech_bubble_tags
-                                        )
-            page.dump_data(metadata_folder, dry=False)
-
-        if not os.path.isdir(metadata_folder):
-            print("There is no metadata please generate metadata first")
-        else:
-            images_folder = "datasets/page_images/"
-            if not os.path.isdir(images_folder) and not args.dry:
-                os.mkdir(images_folder)
-
-            print("Loading metadata and rendering")
-            render_pages(metadata_folder, images_folder, dry=args.dry)
-
-    if args.run_tests:
-        pytest.main([
-                "tests/unit_tests/",
-                "-s",
-                "-x",
-                ])
+        images_folder = "datasets/page_images/"
+        os.makedirs(images_folder, exist_ok=True)
+        render_pages(metadata_folder, images_folder, dry=args.dry)

@@ -51,13 +51,23 @@ panel_removal_max = 2
 background_add_chance = 0.01
 
 # **Speech bubbles**
-max_speech_bubbles_per_panel = 3
+max_speech_bubbles_per_panel = 0
 bubble_to_panel_area_max_ratio = 0.4
 bubble_mask_x_increase = 15
 bubble_mask_y_increase = 15
 min_font_size = 54
 max_font_size = 72
+# in preprocesing/config_file.py
+SPEECH_BUBBLE_SETTINGS = {
+    "min_per_panel": 0,
+    "max_per_panel": 0,
+    # …any other bubble params…
+}
 
+TEXT_SETTINGS = {
+    "enabled": False,
+    # or text probability = 0
+}
 # *Transformations*
 
 # Slicing

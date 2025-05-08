@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 import pyclipper
 import json
 import uuid
+import preprocesing.config_file as cfg
 
 from .page_object_classes import Panel, Page, SpeechBubble
 from .helpers import (
@@ -1470,9 +1471,9 @@ def create_single_panel_metadata(panel,
     select_image = image_dir[select_image_idx]
     panel.image = image_dir_path+select_image
 
-    # Select number of speech bubbles to assign to panel
-    num_speech_bubbles = np.random.randint(minimum_speech_bubbles,
-                                           cfg.max_speech_bubbles_per_panel)
+    # maximum_speech_bubbles가 0일 때 randint(0,1)을 호출하도록 +1
+    num_speech_bubbles = np.random.randint(
+        cfg.SPEECH_BUBBLE_SETTINGS['min_per_panel'], cfg.max_speech_bubbles_per_panel + 1)
 
     # Get lengths of datasets
     text_dataset_len = len(text_dataset)

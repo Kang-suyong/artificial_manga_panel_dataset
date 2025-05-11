@@ -29,9 +29,7 @@ def find_image_dir():
     Raises RuntimeError if none found or all are empty.
     """
     candidates = [
-        "datasets/image_dataset/db_illustrations_bw",
-        "datasets/image_dataset/tagged-anime-illustrations/danbooru-images",
-        "datasets/image_dataset/tagged-anime-illustrations/danbooru-images/danbooru-images"
+        "datasets/image_dataset/filtered_illustrations_bw",
     ]
     for d in candidates:
         if os.path.isdir(d) and os.listdir(d):

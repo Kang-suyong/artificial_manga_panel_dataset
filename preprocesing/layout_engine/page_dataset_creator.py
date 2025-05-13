@@ -1755,6 +1755,7 @@ def get_base_panels(num_panels=0,
             page.num_panels = num_panels
         else:
             page.num_panels = num_panels
+            
 
         if num_panels == 2:
             # Draw 2 rectangles
@@ -2360,6 +2361,15 @@ def create_page_metadata(image_dir,
                            speech_bubble_files,
                            speech_bubble_tags
                            )
+
+    # 패널이 하나이고 이미지가 있는 경우 배경으로 설정
+    if len(page.leaf_children) == 1:
+        single_panel = page.leaf_children[0]
+        if single_panel.image is not None:
+            page.add_background(single_panel.image)
+            # 배경으로 설정된 이미지는 leaf_children에서 제거하여 
+            # 별도의 패널로 렌더링되지 않도록 함
+            page.leaf_children = []
 
     if np.random.random() < cfg.panel_removal_chance:
         page = remove_panel(page)

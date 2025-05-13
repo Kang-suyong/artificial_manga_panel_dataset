@@ -18,20 +18,18 @@ font_character_coverage = 0.80
 
 # TODO: Figure out page type distributions
 num_pages_ratios = {
-    1: 0.025,
-    2: 0.175,
-    3: 0.175,
-    4: 0.175,
-    5: 0.175,
-    6: 0.125,
-    7: 0.125,
-    8: 0.025
+    1: 0.146,
+    2: 0.189,
+    3: 0.135,
+    4: 0.189,
+    5: 0.189,
+    6: 0.152,
 }
 
 vertical_horizontal_ratios = {
-    "v": 0.1,
-    "h": 0.1,
-    "vh": 0.8
+    "v": 0.075,
+    "h": 0.075,
+    "vh": 0.85
 }
 
 # Panel transform chance
@@ -44,7 +42,7 @@ panel_shrink_amount = -25
 
 # Panel removal
 
-panel_removal_chance = 0.2
+panel_removal_chance = 0.0
 panel_removal_max = 2
 
 # Background adding

@@ -10,16 +10,20 @@ import os
 import pandas as pd
 from argparse import ArgumentParser
 import pytest
+import json
+from PIL import Image
 
 import preprocesing.config_file as cfg
 
 # ===== 말풍선·텍스트 비활성화 =====
 # preprocesing/config_file.py 에 정의된 값을 직접 덮어씁니다.
-cfg.SPEECH_BUBBLE_SETTINGS["min_per_panel"] = 0
-cfg.SPEECH_BUBBLE_SETTINGS["max_per_panel"] = 0
-cfg.max_speech_bubbles_per_panel = 0
 cfg.TEXT_SETTINGS["enabled"] = False
 # ==================================
+
+# ===== 말풍선 활성화/비활성화 설정 =====
+# 기본적으로 말풍선은 활성화되어 있습니다
+cfg.SPEECH_BUBBLE_SETTINGS["enabled"] = True
+# ====================================
 
 
 
@@ -38,6 +42,102 @@ def find_image_dir():
         "No BW image folder found. Please ensure images are downloaded and converted.\n"
         "Expected one of:\n  " + "\n  ".join(candidates)
     )
+
+
+def find_speech_bubbles():
+    """
+    말풍선 이미지와 태그를 찾아 반환합니다.
+    
+    :return: 말풍선 이미지 경로 목록, 태그 데이터프레임
+    """
+    # 말풍선 이미지 디렉터리 찾기
+    bubble_candidates = [
+        "datasets/speech_bubbles/files",  # 사용자가 지정한 우선 경로
+        "datasets/speech_bubbles",        # 기존 경로
+        "./speech_bubbles",                # 기존 경로
+        # "/dataset/speech_bubbles",  # 시스템 전체 절대 경로는 제거하거나 주석 처리합니다.
+    ]
+    
+    bubble_dir = None
+    for d in bubble_candidates:
+        if os.path.isdir(d) and os.listdir(d):
+            bubble_dir = d + os.sep
+            print(f"말풍선 디렉터리를 찾았습니다: {bubble_dir}")
+            break
+    
+    # 말풍선 이미지가 없으면 빈 목록 반환
+    if not bubble_dir:
+        print("말풍선 디렉터리를 찾을 수 없습니다. datasets/speech_bubbles/files 또는 datasets/speech_bubbles 디렉터리를 확인해주세요.")
+        return [], pd.DataFrame()
+    
+    # 말풍선 이미지 파일 찾기
+    bubble_files = []
+    for file in os.listdir(bubble_dir):
+        if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+            bubble_files.append(bubble_dir + file)
+    
+    print(f"말풍선 이미지 {len(bubble_files)}개를 찾았습니다.")
+    
+    # 말풍선 태그 생성 (create_default_tags 함수 사용)
+    if bubble_files:
+        bubble_tags = create_default_tags(bubble_files)
+    else:
+        bubble_tags = pd.DataFrame() # 빈 데이터프레임 반환
+    
+    return bubble_files, bubble_tags
+
+
+def create_default_tags(speech_bubble_files):
+    """
+    말풍선 파일들에 대한 기본 태그를 생성합니다.
+    각 말풍선 이미지 중앙에 텍스트 영역을 배치합니다.
+    
+    :param speech_bubble_files: 말풍선 이미지 파일 경로 목록
+    :return: 말풍선 태그 정보가 있는 데이터프레임
+    """
+    print("기본 말풍선 태그 생성 중...")
+    
+    # 파일별 기본 쓰기 영역 생성
+    labels = []
+    for file_path in speech_bubble_files:
+        try:
+            # 이미지 크기 확인
+            with Image.open(file_path) as img:
+                width, height = img.size
+            
+            # 이미지 중앙 60% 영역을 텍스트 영역으로 설정
+            x_margin = width * 0.2
+            y_margin = height * 0.2
+            
+            # 말풍선 중앙에 사각형 영역 생성
+            points = [
+                [x_margin, y_margin],  # 좌상단
+                [width - x_margin, y_margin],  # 우상단
+                [width - x_margin, height - y_margin],  # 우하단
+                [x_margin, height - y_margin]  # 좌하단
+            ]
+            
+            # JSON 형식의 레이블 생성
+            label_json = json.dumps([{
+                "points": points,
+                "shape_type": "polygon"
+            }])
+            
+            labels.append(label_json)
+            
+        except Exception as e:
+            print(f"파일 {file_path} 처리 중 오류: {e}")
+            # 기본값 사용
+            labels.append('[{"points": [[10, 10], [90, 10], [90, 90], [10, 90]], "shape_type": "polygon"}]')
+    
+    # 데이터프레임 생성
+    tags_df = pd.DataFrame({
+        'imagename': speech_bubble_files,
+        'label': labels
+    })
+    
+    print(f"기본 태그 {len(tags_df)}개 생성 완료")
+    return tags_df
 
 
 if __name__ == '__main__':
@@ -76,6 +176,10 @@ if __name__ == '__main__':
                         help="One-shot: create metadata and render N pages")
     parser.add_argument("--images_only", action="store_true",
                         help="Strip out all text and speech bubbles; only frames and images")
+    parser.add_argument("--speech_bubbles", action="store_true", default=True,
+                        help="Include speech bubbles without text (default: enabled)")
+    parser.add_argument("--no_speech_bubbles", action="store_true",
+                        help="Disable speech bubbles completely")
     parser.add_argument("--dry", action="store_true", default=False,
                         help="Dry-run mode: do not write output files")
     parser.add_argument("--run_tests", action="store_true",
@@ -86,6 +190,19 @@ if __name__ == '__main__':
     if args.run_tests:
         pytest.main(["tests/unit_tests/", "-q", "-x"])
         exit(0)
+        
+    # 말풍선 설정 업데이트
+    if args.images_only:
+        # images_only가 지정되면 말풍선과 텍스트 모두 비활성화
+        cfg.TEXT_SETTINGS["enabled"] = False
+        cfg.SPEECH_BUBBLE_SETTINGS["enabled"] = False
+    elif args.no_speech_bubbles:
+        # no_speech_bubbles가 지정되면 말풍선만 비활성화
+        cfg.SPEECH_BUBBLE_SETTINGS["enabled"] = False
+    else:
+        # 기본적으로 말풍선은 활성화, 텍스트는 비활성화
+        cfg.TEXT_SETTINGS["enabled"] = False
+        cfg.SPEECH_BUBBLE_SETTINGS["enabled"] = True
 
     if args.download_images:
         download_db_illustrations()
@@ -99,7 +216,16 @@ if __name__ == '__main__':
         if args.images_only:
             return pd.DataFrame(), [], pd.DataFrame(), []
         else:
-            return pd.DataFrame(), [], pd.DataFrame(), []  # same structure if you plan to load real data
+            # 말풍선 데이터 로드 (텍스트 없이)
+            text_dataset = pd.DataFrame()  # 빈 텍스트 데이터셋
+            
+            # 말풍선 파일 및 태그 로드
+            speech_bubble_files, speech_bubble_tags = find_speech_bubbles()
+            
+            # 폰트 파일은 빈 리스트로 설정 (텍스트 없음)
+            viable_font_files = []
+            
+            return text_dataset, speech_bubble_files, speech_bubble_tags, viable_font_files
 
     # 3) Metadata generation (image-only)
     if args.create_page_metadata:

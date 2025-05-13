@@ -737,15 +737,13 @@ class SpeechBubble(object):
         bubble = Image.open(self.speech_bubble).convert("L")
         mask = bubble.copy()
 
-        # Set variable font size
-        min_font_size = cfg.max_font_size
-        max_font_size = cfg.max_font_size
-        current_font_size = self.font_size
-        font = ImageFont.truetype(self.font, current_font_size)
+        # Get bubble dimensions regardless of text setting
+        w_bubble, h_bubble = bubble.size
+        cx, cy = w_bubble/2, h_bubble/2 
 
-        # Center of bubble
-        w, h = bubble.size
-        cx, cy = w/2, h/2
+        # Only load font if text is enabled (drawing text is handled later)
+        if cfg.TEXT_SETTINGS.get("enabled", False):
+            font = ImageFont.truetype(self.font, self.font_size)
 
         # States is used to indicate whether this bubble is
         # inverted or not to the page render function
@@ -761,220 +759,226 @@ class SpeechBubble(object):
                 bubble = ImageOps.flip(bubble)
                 mask = ImageOps.flip(mask)
                 # TODO: vertically flip box coordinates
-                new_writing_areas = []
-                for area in self.writing_areas:
-                    og_height = area['original_height']
+                if cfg.TEXT_SETTINGS.get("enabled", False): # Only process writing_areas if text is enabled
+                    new_writing_areas = []
+                    for area in self.writing_areas:
+                        og_height = area['original_height']
 
-                    # Convert from percentage to actual values
-                    px_height = (area['height']/100)*og_height
+                        # Convert from percentage to actual values
+                        px_height = (area['height']/100)*og_height
 
-                    og_y = ((area['y']/100)*og_height)
-                    cydist = abs(cy - og_y)
-                    new_y = (2*cydist + og_y) - px_height
-                    new_y = (new_y/og_height)*100
-                    area['y'] = new_y
-                    new_writing_areas.append(area)
-
-                self.writing_areas = new_writing_areas
+                        og_y = ((area['y']/100)*og_height)
+                        cydist = abs(cy - og_y)
+                        new_y = (2*cydist + og_y) - px_height
+                        new_y = (new_y/og_height)*100
+                        area['y'] = new_y
+                        new_writing_areas.append(area)
+                    self.writing_areas = new_writing_areas
                 states.append("vflip")
 
             elif transform == "flip horizontal":
                 bubble = ImageOps.mirror(bubble)
                 mask = ImageOps.mirror(mask)
-                new_writing_areas = []
-                for area in self.writing_areas:
-                    og_width = area['original_width']
+                if cfg.TEXT_SETTINGS.get("enabled", False): # Only process writing_areas if text is enabled
+                    new_writing_areas = []
+                    for area in self.writing_areas:
+                        og_width = area['original_width']
 
-                    # Convert from percentage to actual values
-                    px_width = (area['width']/100)*og_width
+                        # Convert from percentage to actual values
+                        px_width = (area['width']/100)*og_width
 
-                    og_x = ((area['x']/100)*og_width)
-                    # og_y = ((area['y']/100)*og_height)
-                    cxdist = abs(cx - og_x)
-                    new_x = (2*cxdist + og_x) - px_width
-                    new_x = (new_x/og_width)*100
-                    area['x'] = new_x
-                    new_writing_areas.append(area)
-
-                self.writing_areas = new_writing_areas
+                        og_x = ((area['x']/100)*og_width)
+                        # og_y = ((area['y']/100)*og_height)
+                        cxdist = abs(cx - og_x)
+                        new_x = (2*cxdist + og_x) - px_width
+                        new_x = (new_x/og_width)*100
+                        area['x'] = new_x
+                        new_writing_areas.append(area)
+                    self.writing_areas = new_writing_areas
                 states.append("hflip")
 
             elif transform == "stretch x":
-
                 stretch_factor = self.transform_metadata['stretch_x_factor']
-                new_size = (round(w*(1+stretch_factor)), h)
+                new_size = (round(w_bubble*(1+stretch_factor)), h_bubble)
                 # Reassign for resizing later
-                w, h = new_size
+                w_bubble, h_bubble = new_size
                 bubble = bubble.resize(new_size)
                 mask = mask.resize(new_size)
 
-                new_writing_areas = []
-                for area in self.writing_areas:
-                    og_width = area['original_width']
+                if cfg.TEXT_SETTINGS.get("enabled", False): # Only process writing_areas if text is enabled
+                    new_writing_areas = []
+                    for area in self.writing_areas:
+                        og_width = area['original_width']
 
-                    # Convert from percentage to actual values
-                    px_width = (area['width']/100)*og_width
+                        # Convert from percentage to actual values
+                        px_width = (area['width']/100)*og_width
 
-                    area['original_width'] = og_width*(1+stretch_factor)
+                        area['original_width'] = og_width*(1+stretch_factor)
 
-                    new_writing_areas.append(area)
-
-                self.writing_areas = new_writing_areas
+                        new_writing_areas.append(area)
+                    self.writing_areas = new_writing_areas
                 states.append("xstretch")
 
             elif transform == "stretch y":
                 stretch_factor = self.transform_metadata['stretch_y_factor']
-                new_size = (w, round(h*(1+stretch_factor)))
+                new_size = (w_bubble, round(h_bubble*(1+stretch_factor)))
 
                 # Reassign for resizing later
-                w, h = new_size
+                w_bubble, h_bubble = new_size
                 bubble = bubble.resize(new_size)
                 mask = mask.resize(new_size)
 
-                new_writing_areas = []
-                for area in self.writing_areas:
-                    og_height = area['original_height']
+                if cfg.TEXT_SETTINGS.get("enabled", False): # Only process writing_areas if text is enabled
+                    new_writing_areas = []
+                    for area in self.writing_areas:
+                        og_height = area['original_height']
 
-                    # Convert from percentage to actual values
-                    px_height = (area['height']/100)*og_height
+                        # Convert from percentage to actual values
+                        px_height = (area['height']/100)*og_height
 
-                    area['original_height'] = og_height*(1+stretch_factor)
+                        area['original_height'] = og_height*(1+stretch_factor)
 
-                    new_writing_areas.append(area)
-
-                self.writing_areas = new_writing_areas
+                        new_writing_areas.append(area)
+                    self.writing_areas = new_writing_areas
                 states.append("ystretch")
 
         # Write text into bubble
-        write = ImageDraw.Draw(bubble)
-        if "inverted" in states:
-            fill_type = "white"
-        else:
-            fill_type = "black"
-
-        for i, area in enumerate(self.writing_areas):
-            og_width = area['original_width']
-            og_height = area['original_height']
-
-            # Convert from percentage to actual values
-            px_width = (area['width']/100)*og_width
-            px_height = (area['height']/100)*og_height
-
-            og_x = ((area['x']/100)*og_width)
-            og_y = ((area['y']/100)*og_height)
-
-            # at = (og_x, og_y, og_x+px_width, og_y+px_height)
-            # write.rectangle(at, outline="black")
-
-            # Padded
-            x = og_x + 20
-            y = og_y + 20
-
-            # More padding
-            max_x = px_width - 20
-            max_y = px_height - 20
-
-            text = self.texts[i]['Japanese']
-            text = text+text+text+text+text
-            text_segments = [text]
-            size = font.getsize(text)
-
-            if self.text_orientation == "ttb":
-
-                # Setup vertical wrapping
-                avg_height = size[0]/len(text)
-
-                # Maximum chars in line
-                max_chars = int((px_height//avg_height))
-                if size[0] > px_height:
-                    # Using specialized wrapping library
-                    if max_chars > 1:
-                        text_segments = cjkwrap.wrap(text, width=max_chars)
-
-                text_max_w = len(text_segments)*size[1]
-
-                is_fit = False
-
-                # Horizontal wrapping
-                # Reduce font or remove words till text fits
-                while not is_fit:
-                    if text_max_w > px_width:
-                        if current_font_size > min_font_size:
-                            current_font_size -= 1
-                            font = ImageFont.truetype(self.font,
-                                                      current_font_size)
-                            size = font.getsize(text)
-                            avg_height = size[0]/len(text)
-                            max_chars = int((max_y//avg_height))
-                            if max_chars > 1:
-                                text_segments = cjkwrap.wrap(text,
-                                                             width=max_chars)
-
-                            text_max_w = len(text_segments)*size[1]
-                        else:
-                            text_segments.pop()
-                            text_max_w = len(text_segments)*size[1]
-                    else:
-                        is_fit = True
-
-            # if text left to right
+        # Only draw text if text is enabled
+        if cfg.TEXT_SETTINGS.get("enabled", False):
+            write = ImageDraw.Draw(bubble)
+            if "inverted" in states:
+                fill_type = "white"
             else:
-                pass
-                # Setup horizontal wrapping
-                avg_width = size[0]/len(text)
-                max_chars = int((px_width//avg_width))
-                if size[0] > px_width:
-                    # Using specialized wrapping library
-                    if max_chars > 1:
-                        text_segments = cjkwrap.wrap(text, width=max_chars)
+                fill_type = "black"
 
-                # Setup vertical wrapping
-                text_max_h = len(text_segments)*size[1]
-                is_fit = False
-                while not is_fit:
-                    if text_max_h > px_height:
-                        if current_font_size > min_font_size:
-                            current_font_size -= 1
-                            font = ImageFont.truetype(self.font,
-                                                      current_font_size)
-                            size = font.getsize(text)
-                            avg_width = size[0]/len(text)
-                            max_chars = int((px_width//avg_width))
-                            if max_chars > 1:
-                                text_segments = cjkwrap.wrap(text,
-                                                             width=max_chars)
-                            text_max_h = len(text_segments)*size[1]
+            for i, area in enumerate(self.writing_areas):
+                og_width = area['original_width']
+                og_height = area['original_height']
+
+                # Convert from percentage to actual values
+                px_width = (area['width']/100)*og_width
+                px_height = (area['height']/100)*og_height
+
+                og_x = ((area['x']/100)*og_width)
+                og_y = ((area['y']/100)*og_height)
+
+                # at = (og_x, og_y, og_x+px_width, og_y+px_height)
+                # write.rectangle(at, outline="black")
+
+                # Padded
+                x = og_x + 20
+                y = og_y + 20
+
+                # More padding
+                max_x = px_width - 20
+                max_y = px_height - 20
+
+                text = self.texts[i]['Japanese']
+                text = text+text+text+text+text
+                text_segments = [text]
+                size = font.getsize(text)
+
+                if self.text_orientation == "ttb":
+
+                    # Setup vertical wrapping
+                    avg_height = size[0]/len(text)
+
+                    # Maximum chars in line
+                    max_chars = int((px_height//avg_height))
+                    if size[0] > px_height:
+                        # Using specialized wrapping library
+                        if max_chars > 1:
+                            text_segments = cjkwrap.wrap(text, width=max_chars)
+
+                    text_max_w = len(text_segments)*size[1]
+
+                    is_fit = False
+
+                    # Horizontal wrapping
+                    # Reduce font or remove words till text fits
+                    while not is_fit:
+                        if text_max_w > px_width:
+                            if self.font_size > cfg.min_font_size:
+                                self.font_size -= 1
+                                font = ImageFont.truetype(self.font,
+                                                          self.font_size)
+                                size = font.getsize(text)
+                                avg_height = size[0]/len(text)
+                                max_chars = int((max_y//avg_height))
+                                if max_chars > 1:
+                                    text_segments = cjkwrap.wrap(text,
+                                                                 width=max_chars)
+
+                                text_max_w = len(text_segments)*size[1]
+                            else:
+                                text_segments.pop()
+                                text_max_w = len(text_segments)*size[1]
                         else:
-                            text_segments.pop()
-                            text_max_h = len(text_segments)*size[1]
-                    else:
-                        is_fit = True
+                            is_fit = True
 
-            # Center bubble x axis
-            cbx = og_x + (px_width/2)
-            cby = og_y + (px_height/2)
-
-            # Render text
-            for i, text in enumerate(text_segments):
-                if self.text_orientation == 'ttb':
-                    rx = ((cbx + text_max_w/2) -
-                          ((len(text_segments) - i)*size[1]))
-
-                    ry = y
+                # if text left to right
                 else:
-                    seg_size = font.getsize(text)
-                    rx = cbx - seg_size[0]/2
-                    ry = ((cby + (len(text_segments)*size[1])/2) -
-                          ((len(text_segments) - i)*size[1]))
+                    pass
+                    # Setup horizontal wrapping
+                    avg_width = size[0]/len(text)
+                    max_chars = int((px_width//avg_width))
+                    if size[0] > px_width:
+                        # Using specialized wrapping library
+                        if max_chars > 1:
+                            text_segments = cjkwrap.wrap(text, width=max_chars)
 
-                write.text((rx, ry),
-                           text,
-                           font=font,
-                           fill=fill_type,
-                           direction=self.text_orientation)
+                    # Setup vertical wrapping
+                    text_max_h = len(text_segments)*size[1]
+                    is_fit = False
+                    while not is_fit:
+                        if text_max_h > px_height:
+                            if self.font_size > cfg.min_font_size:
+                                self.font_size -= 1
+                                font = ImageFont.truetype(self.font,
+                                                          self.font_size)
+                                size = font.getsize(text)
+                                avg_width = size[0]/len(text)
+                                max_chars = int((px_width//avg_width))
+                                if max_chars > 1:
+                                    text_segments = cjkwrap.wrap(text,
+                                                                 width=max_chars)
+                                text_max_h = len(text_segments)*size[1]
+                            else:
+                                text_segments.pop()
+                                text_max_h = len(text_segments)*size[1]
+                        else:
+                            is_fit = True
+
+                # Center bubble x axis
+                cbx = og_x + (px_width/2)
+                cby = og_y + (px_height/2)
+
+                # Render text
+                for i, text in enumerate(text_segments):
+                    if self.text_orientation == 'ttb':
+                        rx = ((cbx + text_max_w/2) -
+                              ((len(text_segments) - i)*size[1]))
+
+                        ry = y
+                    else:
+                        seg_size = font.getsize(text)
+                        rx = cbx - seg_size[0]/2
+                        ry = ((cby + (len(text_segments)*size[1])/2) -
+                              ((len(text_segments) - i)*size[1]))
+
+                    write.text((rx, ry),
+                               text,
+                               font=font,
+                               fill=fill_type,
+                               direction=self.text_orientation)
+
+            self.font_size = self.font_size
 
         # reisize bubble
-        aspect_ratio = h/w
+        if w_bubble == 0: # Avoid division by zero if bubble size is zero for some reason
+            aspect_ratio = 1
+        else:
+            aspect_ratio = h_bubble/w_bubble
         new_height = round(np.sqrt(self.resize_to/aspect_ratio))
         new_width = round(new_height * aspect_ratio)
         bubble = bubble.resize((new_width, new_height))

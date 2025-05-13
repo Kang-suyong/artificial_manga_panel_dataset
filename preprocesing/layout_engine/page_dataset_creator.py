@@ -8,6 +8,7 @@ import pyclipper
 import json
 import uuid
 import preprocesing.config_file as cfg
+import os
 
 from .page_object_classes import Panel, Page, SpeechBubble
 from .helpers import (
@@ -1471,21 +1472,32 @@ def create_single_panel_metadata(panel,
     select_image = image_dir[select_image_idx]
     panel.image = image_dir_path+select_image
 
-    # maximum_speech_bubbles가 0일 때 randint(0,1)을 호출하도록 +1
-    num_speech_bubbles = np.random.randint(
-        cfg.SPEECH_BUBBLE_SETTINGS['min_per_panel'], cfg.max_speech_bubbles_per_panel + 1)
+    # SPEECH_BUBBLE_SETTINGS에서 말풍선 수 가져오기
+    min_bubbles = cfg.SPEECH_BUBBLE_SETTINGS.get("min_per_panel", 0)
+    max_bubbles = cfg.SPEECH_BUBBLE_SETTINGS.get("max_per_panel", cfg.SPEECH_BUBBLE_SETTINGS["max_per_panel"])
+    
+    # 말풍선 개수 결정 (min_bubbles ~ max_bubbles)
+    num_speech_bubbles = np.random.randint(min_bubbles, max_bubbles + 1)
 
     # Get lengths of datasets
     text_dataset_len = len(text_dataset)
     font_dataset_len = len(font_files)
     speech_bubble_dataset_len = len(speech_bubble_files)
 
+    # 텍스트가 비활성화되었거나 필요한 데이터가 없으면 말풍선을 추가하지 않음
+    if not hasattr(cfg, 'SPEECH_BUBBLE_SETTINGS') or not cfg.SPEECH_BUBBLE_SETTINGS.get("enabled", True) or speech_bubble_dataset_len == 0:
+        return
+        
+    # 텍스트 데이터셋이 비어있는 경우 더미 텍스트 사용
+    dummy_text = {"dummy": ""}
+    use_dummy_text = text_dataset_len == 0 or not cfg.TEXT_SETTINGS.get("enabled", True)
+
     # Associated speech bubbles
     for speech_bubble in range(num_speech_bubbles):
 
-        # Select a font
-        font_idx = np.random.randint(0, font_dataset_len)
-        font = font_files[font_idx]
+        # # Select a font
+        # font_idx = np.random.randint(0, font_dataset_len)
+        # font = font_files[font_idx]
 
         # Select a speech bubble and get it's writing areas
         speech_bubble_file_idx = np.random.randint(
@@ -1495,19 +1507,43 @@ def create_single_panel_metadata(panel,
 
         speech_bubble_file = speech_bubble_files[speech_bubble_file_idx]
 
-        area_idx = speech_bubble_tags['imagename'] == speech_bubble_file
-        speech_bubble_writing_area = speech_bubble_tags[area_idx]['label']
-        speech_bubble_writing_area = speech_bubble_writing_area.values[0]
-        speech_bubble_writing_area = json.loads(speech_bubble_writing_area)
+        # speech_bubble_tags에서 imagename이 정확히 일치하는 항목 찾기
+        if 'imagename' in speech_bubble_tags:
+            # 완전히 일치하는 이름 찾기
+            area_idx = speech_bubble_tags['imagename'] == speech_bubble_file
+            # 일치하는 항목이 없으면 파일명만 비교
+            if not any(area_idx):
+                speech_bubble_filename = os.path.basename(speech_bubble_file)
+                area_idx = speech_bubble_tags['imagename'].apply(lambda x: os.path.basename(x) == speech_bubble_filename)
+            
+            if any(area_idx):
+                speech_bubble_writing_area = speech_bubble_tags[area_idx]['label'].values[0]
+                try:
+                    speech_bubble_writing_area = json.loads(speech_bubble_writing_area)
+                except:
+                    # 기본 영역 사용
+                    speech_bubble_writing_area = [{"points": [[10, 10], [90, 10], [90, 90], [10, 90]], "shape_type": "polygon"}]
+            else:
+                # 일치하는 태그가 없음 - 기본 영역 사용
+                speech_bubble_writing_area = [{"points": [[10, 10], [90, 10], [90, 90], [10, 90]], "shape_type": "polygon"}]
+        else:
+            # speech_bubble_tags에 imagename 열이 없는 경우 기본 영역 사용
+            speech_bubble_writing_area = [{"points": [[10, 10], [90, 10], [90, 90], [10, 90]], "shape_type": "polygon"}]
 
-        # Select text for writing areas
+        # # Select text for writing areas
         texts = []
         text_indices = []
         for i in range(len(speech_bubble_writing_area)):
-            text_idx = np.random.randint(0, text_dataset_len)
-            text_indices.append(text_idx)
-            text = text_dataset.iloc[text_idx].to_dict()
-            texts.append(text)
+            if use_dummy_text:
+                # 더미 텍스트 사용
+                text_indices.append(0)
+                texts.append(dummy_text)
+            else:
+                # 실제 텍스트 사용
+                text_idx = np.random.randint(0, text_dataset_len)
+                text_indices.append(text_idx)
+                text = text_dataset.iloc[text_idx].to_dict()
+                texts.append(text)
 
         # resize bubble to < 40% of panel area
         max_area = panel.area*cfg.bubble_to_panel_area_max_ratio
@@ -1531,19 +1567,25 @@ def create_single_panel_metadata(panel,
 
         speech_bubble_img = Image.open(speech_bubble_file)
         w, h = speech_bubble_img.size
-        # Create speech bubble
-        speech_bubble = SpeechBubble(texts=texts,
-                                     text_indices=text_indices,
-                                     font=font,
-                                     speech_bubble=speech_bubble_file,
-                                     writing_areas=speech_bubble_writing_area,
-                                     resize_to=new_area,
-                                     location=location,
-                                     width=w,
-                                     height=h,
-                                     )
-
-        panel.speech_bubbles.append(speech_bubble)
+        
+        # font 변수가 정의되지 않았으므로 빈 문자열로 설정
+        font = ""
+        
+        # 이미지가 존재하는지 확인
+        try:
+            speech_bubble = SpeechBubble(texts=texts,
+                                       text_indices=text_indices,
+                                       font=font,
+                                       speech_bubble=speech_bubble_file,
+                                       writing_areas=speech_bubble_writing_area,
+                                       resize_to=new_area,
+                                       location=location,
+                                       width=w,
+                                       height=h,
+                                       )
+            panel.speech_bubbles.append(speech_bubble)
+        except Exception as e:
+            print(f"말풍선 추가 오류: {e} - 파일: {speech_bubble_file}")
 
 
 def populate_panels(page,
@@ -2321,11 +2363,5 @@ def create_page_metadata(image_dir,
 
     if np.random.random() < cfg.panel_removal_chance:
         page = remove_panel(page)
-
-    if number_of_panels == 1:
-        page = add_background(page, image_dir, image_dir_path)
-    else:
-        if np.random.random() < cfg.background_add_chance:
-            page = add_background(page, image_dir, image_dir_path)
 
     return page

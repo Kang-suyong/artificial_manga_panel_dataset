@@ -137,3 +137,4 @@ raw.tar.gz
 /datasets
 config/
 .DS_Store
+/debug_ocr_images
